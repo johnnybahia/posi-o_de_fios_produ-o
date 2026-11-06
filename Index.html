@@ -205,28 +205,29 @@
     document.addEventListener('DOMContentLoaded', function () {
       try {
         const u = <?!= JSON.stringify(userParam || '') ?> || new URLSearchParams(window.location.search).get('u');
+        let userFromUrl = null;
         if (u) {
           try {
             const obj = JSON.parse(decodeURIComponent(escape(atob(u))));
-            if (obj && obj.usuario) {
-              localStorage.setItem('userInfo', JSON.stringify(obj));
-              sessionStorage.setItem('userInfo', JSON.stringify(obj));
-            }
+            if (obj && obj.usuario) userFromUrl = obj;
           } catch (e) {
             console.error('Erro ao decodificar parâmetro u:', e);
           }
         }
 
-        // Tenta recuperar do localStorage primeiro, depois sessionStorage
-        let userJson = localStorage.getItem('userInfo');
-        if (!userJson) {
-          userJson = sessionStorage.getItem('userInfo');
-          if (userJson) {
-            // Se encontrou no session, salva no localStorage também
-            localStorage.setItem('userInfo', userJson);
-          }
+        const storageGet = (s) => { try { return s.getItem('userInfo'); } catch (e) { return null; } };
+        const storageSet = (s, v) => { try { s.setItem('userInfo', v); } catch (e) {} };
+
+        if (userFromUrl) {
+          usuarioAtual = userFromUrl;
+          const json = JSON.stringify(userFromUrl);
+          storageSet(localStorage, json);
+          storageSet(sessionStorage, json);
+        } else {
+          const userJson = storageGet(localStorage) || storageGet(sessionStorage);
+          if (userJson) storageSet(localStorage, userJson);
+          try { usuarioAtual = userJson ? JSON.parse(userJson) : null; } catch (e) { usuarioAtual = null; }
         }
-        usuarioAtual = userJson ? JSON.parse(userJson) : null;
 
         if (!usuarioAtual || (!usuarioAtual.nomeCompleto && !usuarioAtual.usuario)) {
           console.log('Usuário não autenticado, redirecionando para login');
