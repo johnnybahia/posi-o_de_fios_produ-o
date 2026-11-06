@@ -388,7 +388,7 @@ function buscarFioHistorico(item) {
 
     // Ler todas as colunas necessárias: C (item), P (usuário), Q (localização), R (data)
     // Coluna C = índice 3, P = 16, Q = 17, R = 18
-    const dados = wsHistorico.getRange(2, 1, totalRows, 18).getValues();
+    const dados = wsHistorico.getRange(2, 1, totalRows, 24).getValues();
 
     const resultados = [];
 
@@ -418,8 +418,14 @@ function buscarFioHistorico(item) {
           }
         }
 
+        const saldoRaw = linha[23];
+        const saldo = (saldoRaw === '' || saldoRaw === null || saldoRaw === undefined)
+          ? 'Não registrado' : String(saldoRaw);
+
         resultados.push({
           item: itemLinha,
+          posicao: String(linha[1] || 'Não informado'), // Coluna B
+          saldo: saldo, // Coluna X (24)
           usuario: usuario,
           localizacao: localizacao,
           data: dataFormatada,
@@ -796,6 +802,30 @@ function criarNovoPedido(dados) {
   }
 }
 
+function _getEstoqueItem_(ss, idItem) {
+  const wsEstoque = _getSheetByNames_(ss, ["Estoque"]);
+  if (!wsEstoque || wsEstoque.getLastRow() < 2) return null;
+
+  const colId = _findColByNames_(wsEstoque, ["ID_Item", "ID", "Item", "Codigo", "Código"]);
+  const colQtd = _findColByNames_(wsEstoque, ["Qtd", "Quantidade", "Estoque", "Qtd_Atual", "Qtde"]);
+  if (!colId || !colQtd) return null;
+
+  const alvo = _simpleId_(idItem);
+  const n = wsEstoque.getLastRow() - 1;
+  const ids = wsEstoque.getRange(2, colId, n, 1).getValues();
+  const qts = wsEstoque.getRange(2, colQtd, n, 1).getValues();
+
+  for (let i = 0; i < n; i++) {
+    if (_simpleId_(ids[i][0]) === alvo) {
+      const v = qts[i][0];
+      if (typeof v === 'number' && !isNaN(v)) return v;
+      const p = parseFloat(v);
+      return isNaN(p) ? null : p;
+    }
+  }
+  return null;
+}
+
 function atualizarPedido(id, acao, valores) {
   try {
     const ss = getSS_();
@@ -840,6 +870,12 @@ function atualizarPedido(id, acao, valores) {
             ws.getRange(L, 16).setValue(valores.usuario);
             ws.getRange(L, 17).setValue(valores.local);
             ws.getRange(L, 18).setValue(new Date());
+            try {
+              const saldo = _getEstoqueItem_(ss, ws.getRange(L, 3).getValue());
+              ws.getRange(L, 24).setValue(saldo === null ? '' : saldo);
+            } catch (eSaldo) {
+              Logger.log('Aviso: saldo não gravado: ' + eSaldo.message);
+            }
             return "Devolução finalizada com sucesso.";
           default:
             return "Erro: Ação desconhecida.";
@@ -885,7 +921,7 @@ function arquivarItensFinalizados() {
       return;
     }
 
-    const numCols = Math.min(wsMovimentacoes.getLastColumn(), 23);
+    const numCols = Math.min(wsMovimentacoes.getLastColumn(), 24);
     const dados = wsMovimentacoes.getRange(2, 1, lastRow - 1, numCols).getValues();
 
     Logger.log('Total de registros: ' + dados.length);
