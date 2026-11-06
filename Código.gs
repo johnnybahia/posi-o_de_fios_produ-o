@@ -120,7 +120,9 @@ function doGet(e) {
     
     if (page === "app") {
       Logger.log('Carregando Index.html (aplicação)');
-      output = HtmlService.createHtmlOutputFromFile("Index");
+      const tpl = HtmlService.createTemplateFromFile("Index");
+      tpl.userParam = (e && e.parameter && e.parameter.u) || "";
+      output = tpl.evaluate();
     } else {
       Logger.log('Carregando Login.html (tela de login)');
       output = HtmlService.createHtmlOutputFromFile("Login");
