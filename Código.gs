@@ -120,9 +120,7 @@ function doGet(e) {
     
     if (page === "app") {
       Logger.log('Carregando Index.html (aplicação)');
-      const tpl = HtmlService.createTemplateFromFile("Index");
-      tpl.userParam = (e && e.parameter && e.parameter.u) || "";
-      output = tpl.evaluate();
+      output = HtmlService.createHtmlOutputFromFile("Index");
     } else {
       Logger.log('Carregando Login.html (tela de login)');
       output = HtmlService.createHtmlOutputFromFile("Login");
@@ -130,9 +128,6 @@ function doGet(e) {
     
     output.setTitle("Controle de Materiais");
     output.addMetaTag('viewport', 'width=device-width, initial-scale=1');
-
-    // ✅ Permite carregamento dentro de iframes/WebView (Fully Kiosk, etc.)
-    output.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     
     Logger.log('Página carregada com sucesso');
     return output;
