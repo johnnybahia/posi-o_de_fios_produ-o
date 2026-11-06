@@ -204,30 +204,30 @@
 
     document.addEventListener('DOMContentLoaded', function () {
       try {
-        const u = <?!= JSON.stringify(userParam || '') ?> || new URLSearchParams(window.location.search).get('u');
-        let userFromUrl = null;
+        const params = new URLSearchParams(window.location.search);
+        const u = params.get('u');
         if (u) {
           try {
             const obj = JSON.parse(decodeURIComponent(escape(atob(u))));
-            if (obj && obj.usuario) userFromUrl = obj;
+            if (obj && obj.usuario) {
+              localStorage.setItem('userInfo', JSON.stringify(obj));
+              sessionStorage.setItem('userInfo', JSON.stringify(obj));
+            }
           } catch (e) {
             console.error('Erro ao decodificar parâmetro u:', e);
           }
         }
 
-        const storageGet = (s) => { try { return s.getItem('userInfo'); } catch (e) { return null; } };
-        const storageSet = (s, v) => { try { s.setItem('userInfo', v); } catch (e) {} };
-
-        if (userFromUrl) {
-          usuarioAtual = userFromUrl;
-          const json = JSON.stringify(userFromUrl);
-          storageSet(localStorage, json);
-          storageSet(sessionStorage, json);
-        } else {
-          const userJson = storageGet(localStorage) || storageGet(sessionStorage);
-          if (userJson) storageSet(localStorage, userJson);
-          try { usuarioAtual = userJson ? JSON.parse(userJson) : null; } catch (e) { usuarioAtual = null; }
+        // Tenta recuperar do localStorage primeiro, depois sessionStorage
+        let userJson = localStorage.getItem('userInfo');
+        if (!userJson) {
+          userJson = sessionStorage.getItem('userInfo');
+          if (userJson) {
+            // Se encontrou no session, salva no localStorage também
+            localStorage.setItem('userInfo', userJson);
+          }
         }
+        usuarioAtual = userJson ? JSON.parse(userJson) : null;
 
         if (!usuarioAtual || (!usuarioAtual.nomeCompleto && !usuarioAtual.usuario)) {
           console.log('Usuário não autenticado, redirecionando para login');
@@ -262,36 +262,37 @@
       }
     });
 
-    function renderTelaSessaoExpirada(urlLogin) {
-      const botao = urlLogin
-        ? `<a href="${urlLogin}" target="_top" rel="noopener"
-             style="display: inline-block; background: #2563eb; color: white; padding: 0.75rem 1.5rem;
-                    border-radius: 6px; text-decoration: none; font-weight: bold;">
-             Ir para Login
-           </a>`
-        : `<p style="color: #b91c1c; font-weight: bold;">Reabra o link do sistema para entrar novamente.</p>`;
-
-      document.body.innerHTML = `
-        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f3f4f6; font-family: Arial, sans-serif;">
-          <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 500px;">
-            <h2 style="color: #dc2626; margin-bottom: 1rem;">⚠️ Sessão Expirada</h2>
-            <p style="color: #4b5563; margin-bottom: 1.5rem;">
-              Sua sessão expirou ou você não está autenticado. Por favor, faça login novamente.
-            </p>
-            ${botao}
-          </div>
-        </div>
-      `;
-    }
-
     function mostrarTelaLogin() {
-      google.script.run
-        .withSuccessHandler(function(url) { renderTelaSessaoExpirada(url); })
-        .withFailureHandler(function(err) {
-          console.error('Erro ao obter URL do login:', err);
-          renderTelaSessaoExpirada(null);
-        })
-        .getWebAppUrl();
+      const url = new URL(window.location.href);
+      url.searchParams.delete('page');
+      url.searchParams.delete('u');
+
+      try {
+        if (window.top && window.top !== window.self) {
+          window.top.location.replace(url.toString());
+        } else {
+          window.location.replace(url.toString());
+        }
+      } catch (e) {
+        console.error('Erro ao redirecionar para login:', e);
+
+        // Exibe mensagem de erro visível se o redirecionamento falhar
+        document.body.innerHTML = `
+          <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f3f4f6; font-family: Arial, sans-serif;">
+            <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 500px;">
+              <h2 style="color: #dc2626; margin-bottom: 1rem;">⚠️ Sessão Expirada</h2>
+              <p style="color: #4b5563; margin-bottom: 1.5rem;">
+                Sua sessão expirou ou você não está autenticado. Por favor, faça login novamente.
+              </p>
+              <a href="${url.toString()}"
+                 style="display: inline-block; background: #2563eb; color: white; padding: 0.75rem 1.5rem;
+                        border-radius: 6px; text-decoration: none; font-weight: bold;">
+                Ir para Login
+              </a>
+            </div>
+          </div>
+        `;
+      }
     }
     
     function doLogout(isIdle) {
@@ -301,7 +302,8 @@
       } catch (e) {}
       
       if (isIdle) {
-        mostrarTelaLogin();
+        showToast('Sessão expirada por inatividade.', 'warn', 3500);
+        setTimeout(() => redirecionarParaLogin(), 1000);
       } else {
         redirecionarParaLogin();
       }
