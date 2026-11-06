@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Controle de Materiais</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .modal { transition: opacity 0.25s ease; }
+    .btn-disabled {
+      opacity: 0.5;
+      cursor: not-allowed !important;
+      pointer-events: none;
+    }
+    .btn-carregando {
+      opacity: 0.55;
+      cursor: wait !important;
+      pointer-events: none;
+      position: relative;
+    }
+    .btn-carregando::after {
+      content: ' ⏳';
+    }
+    
+    /* Autocomplete Dropdown */
+    #autocomplete-dropdown {
+      max-height: 300px;
+    }
+    #autocomplete-dropdown::-webkit-scrollbar {
+      width: 8px;
+    }
+    #autocomplete-dropdown::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+    #autocomplete-dropdown::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+    #autocomplete-dropdown::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    .autocomplete-item:last-child {
+      border-bottom: none;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-100 p-4 sm:p-6 lg:p-8">
+  <div id="toast-root" class="fixed z-50 top-4 right-4 space-y-2"></div>
+
+  <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-lg p-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b-2 border-gray-200">
+      <div class="flex items-center">
+        <img src="https://i.ibb.co/FGGjdsM/LOGO-MARFIM.jpg" alt="Logo" class="h-12 w-auto mr-4">
+        <div>
+          <h3 class="text-2xl font-bold text-gray-800">Controle de Materiais</h3>
+          <small id="usuario-logado" class="text-gray-600">Carregando...</small>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-4 sm:mt-0">
+        <button id="btn-novo-pedido" onclick="abrirModalPedido()" class="hidden px-4 py-2 font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700">+ Novo Pedido</button>
+        <button id="btn-sair" onclick="doLogout(false)" class="px-4 py-2 font-semibold text-white bg-gray-700 rounded-lg shadow-md hover:bg-gray-800">Sair</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="mb-6">
+      <div class="flex flex-wrap gap-3">
+        <button onclick="carregarPedidos('novo')"        class="btn-filtro px-4 py-2 font-semibold text-white bg-red-600   rounded-lg shadow-md hover:bg-red-700">Novos</button>
+        <button onclick="carregarPedidos('abertos')"     class="btn-filtro px-4 py-2 font-semibold text-white bg-blue-600  rounded-lg shadow-md hover:bg-blue-700">Abertos</button>
+        <button onclick="carregarPedidos('finalizados')" class="btn-filtro px-4 py-2 font-semibold text-white bg-gray-500 rounded-lg shadow-md hover:bg-gray-600">Finalizados</button>
+        <button onclick="carregarPedidos('tudo')"        class="btn-filtro px-4 py-2 font-semibold text-white bg-teal-500  rounded-lg shadow-md hover:bg-teal-600">Ver Tudo</button>
+        <button onclick="carregarPedidos(null)"          class="btn-filtro px-4 py-2 font-semibold text-white bg-slate-700 rounded-lg shadow-md hover:bg-slate-800">Atualizar</button>
+        <button onclick="abrirModalLocalizarFio()"       class="px-4 py-2 font-semibold text-white bg-purple-600 rounded-lg shadow-md hover:bg-purple-700">🔍 Localizar Fio</button>
+      </div>
+
+      <div class="mt-4">
+        <label for="filtro-texto" class="block text-sm font-medium text-gray-700">Buscar (Item/Setor/Status):</label>
+        <input type="text" id="filtro-texto" placeholder="Digite para filtrar..." class="mt-1 block w-full sm:w-1/2 px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm">
+      </div>
+    </div>
+
+    <!-- Lista -->
+    <div id="lista-pedidos" class="space-y-4"></div>
+  </div>
+
+  <!-- Modal Novo Pedido -->
+  <div id="modal-novo-pedido" class="modal pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center opacity-0">
+    <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50" onclick="fecharModalPedido()"></div>
+    <div class="modal-container bg-white w-11/12 md:max-w-md mx-auto rounded-lg shadow-lg z-50">
+      <div class="modal-content py-4 text-left px-6">
+        <div class="flex justify-between items-center pb-3">
+          <p class="text-2xl font-bold">Criar Novo Pedido</p>
+          <div class="modal-close cursor-pointer" onclick="fecharModalPedido()">&#x2715;</div>
+        </div>
+
+        <form id="form-novo-pedido" onsubmit="handleNovoPedido(event)">
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="item-input">Inserir cor ou produto</label>
+            <div class="relative">
+              <input
+                id="item-input"
+                type="text"
+                class="shadow border rounded w-full py-2 px-3 text-gray-700 bg-white"
+                placeholder="Digite para buscar..."
+                autocomplete="off"
+                required
+              >
+              <div id="autocomplete-dropdown" class="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto hidden"></div>
+            </div>
+            <small id="item-hint" class="text-xs text-gray-500 mt-1 block">Digite para buscar em todos os itens</small>
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="quantidade">Quantidade de Cones</label>
+            <input id="quantidade" type="number" min="1" value="1" class="shadow border rounded w-full py-2 px-3 text-gray-700" required>
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="kg">KG</label>
+            <input id="kg" type="number" min="0" step="0.01" value="" class="shadow border rounded w-full py-2 px-3 text-gray-700" placeholder="Digite o peso em KG">
+          </div>
+
+          <div class="mb-6">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="setor-input">Setor para entrega</label>
+            <input id="setor-input" list="setor-list" class="shadow border rounded w-full py-2 px-3 text-gray-700 bg-white" placeholder="Digite o setor..." autocomplete="off" required>
+            <datalist id="setor-list"></datalist>
+          </div>
+
+          <div class="flex items-center justify-end gap-2">
+            <button type="button" class="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300" onclick="fecharModalPedido()">Cancelar</button>
+            <button id="btn-criar" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" type="submit">Criar Pedido</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Localizar Fio -->
+  <div id="modal-localizar-fio" class="modal pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center opacity-0">
+    <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50" onclick="fecharModalLocalizarFio()"></div>
+    <div class="modal-container bg-white w-11/12 md:max-w-2xl mx-auto rounded-lg shadow-lg z-50 max-h-screen overflow-y-auto">
+      <div class="modal-content py-4 text-left px-6">
+        <div class="flex justify-between items-center pb-3">
+          <p class="text-2xl font-bold">🔍 Localizar Fio no Histórico</p>
+          <div class="modal-close cursor-pointer" onclick="fecharModalLocalizarFio()">&#x2715;</div>
+        </div>
+
+        <form id="form-localizar-fio" onsubmit="handleLocalizarFio(event)">
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="fio-input">Inserir código do fio/item</label>
+            <div class="relative">
+              <input
+                id="fio-input"
+                type="text"
+                class="shadow border rounded w-full py-2 px-3 text-gray-700 bg-white"
+                placeholder="Digite o código do item..."
+                autocomplete="off"
+                required
+              >
+              <div id="fio-autocomplete-dropdown" class="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto hidden"></div>
+            </div>
+            <small id="fio-hint" class="text-xs text-gray-500 mt-1 block">Digite para buscar itens do histórico</small>
+          </div>
+
+          <div class="flex items-center justify-end gap-2">
+            <button type="button" class="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300" onclick="fecharModalLocalizarFio()">Cancelar</button>
+            <button id="btn-buscar-fio" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded" type="submit">🔍 Buscar</button>
+          </div>
+        </form>
+
+        <!-- Resultados da busca -->
+        <div id="resultados-fio" class="mt-6 hidden">
+          <hr class="my-4">
+          <h3 class="text-xl font-bold text-gray-800 mb-4">📋 Resultados Encontrados:</h3>
+          <div id="lista-resultados-fio" class="space-y-3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let usuarioAtual = null;
+    let filtroStatus = 'tudo';
+    window.pedidosGlobais = [];
+
+    const validItemIds = new Set();
+    const validSetoresLower = new Map();
+
+    const REFRESH_EVERY_MS = 30000; // 30 segundos
+    let autoRefreshTimer = null;
+    let isLoadingPedidos = false;
+
+    const IDLE_TIMEOUT = 30 * 60 * 1000;
+    let idleTimer;
+
+    // Autocomplete
+    let autocompleteTimeout = null;
+    let selectedItemId = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const u = params.get('u');
+        if (u) {
+          try {
+            const obj = JSON.parse(decodeURIComponent(escape(atob(u))));
+            if (obj && obj.usuario) {
+              localStorage.setItem('userInfo', JSON.stringify(obj));
+              sessionStorage.setItem('userInfo', JSON.stringify(obj));
+            }
+          } catch (e) {
+            console.error('Erro ao decodificar parâmetro u:', e);
+          }
+        }
+
+        // Tenta recuperar do localStorage primeiro, depois sessionStorage
+        let userJson = localStorage.getItem('userInfo');
+        if (!userJson) {
+          userJson = sessionStorage.getItem('userInfo');
+          if (userJson) {
+            // Se encontrou no session, salva no localStorage também
+            localStorage.setItem('userInfo', userJson);
+          }
+        }
+        usuarioAtual = userJson ? JSON.parse(userJson) : null;
+
+        if (!usuarioAtual || (!usuarioAtual.nomeCompleto && !usuarioAtual.usuario)) {
+          console.log('Usuário não autenticado, redirecionando para login');
+          return mostrarTelaLogin();
+        }
+
+        const displayName = usuarioAtual.nomeCompleto || usuarioAtual.usuario || 'Usuário';
+        document.getElementById('usuario-logado').innerText = `Usuário: ${displayName}`;
+
+        const podeNovo = hasPermission('novoPedido') || (usuarioAtual.funcao || '').toLowerCase() === 'master';
+        document.getElementById('btn-novo-pedido').classList.toggle('hidden', !podeNovo);
+
+        resetIdleTimer();
+        document.addEventListener('mousemove', resetIdleTimer);
+        document.addEventListener('keypress', resetIdleTimer);
+        document.addEventListener('click', resetIdleTimer);
+
+        document.getElementById('filtro-texto').addEventListener('input', () => renderizarPedidos(window.pedidosGlobais));
+
+        console.log('Iniciando carregamento de dados...');
+        carregarDadosIniciais();
+        carregarPedidos('tudo');
+        startAutoRefresh();
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') carregarPedidos(null, true);
+        });
+        window.addEventListener('focus', () => carregarPedidos(null, true));
+      } catch (geralError) {
+        console.error("Erro geral na inicialização:", geralError);
+        mostrarTelaLogin();
+      }
+    });
+
+    function mostrarTelaLogin() {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('page');
+      url.searchParams.delete('u');
+
+      try {
+        if (window.top && window.top !== window.self) {
+          window.top.location.replace(url.toString());
+        } else {
+          window.location.replace(url.toString());
+        }
+      } catch (e) {
+        console.error('Erro ao redirecionar para login:', e);
+
+        // Exibe mensagem de erro visível se o redirecionamento falhar
+        document.body.innerHTML = `
+          <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f3f4f6; font-family: Arial, sans-serif;">
+            <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 500px;">
+              <h2 style="color: #dc2626; margin-bottom: 1rem;">⚠️ Sessão Expirada</h2>
+              <p style="color: #4b5563; margin-bottom: 1.5rem;">
+                Sua sessão expirou ou você não está autenticado. Por favor, faça login novamente.
+              </p>
+              <a href="${url.toString()}"
+                 style="display: inline-block; background: #2563eb; color: white; padding: 0.75rem 1.5rem;
+                        border-radius: 6px; text-decoration: none; font-weight: bold;">
+                Ir para Login
+              </a>
+            </div>
+          </div>
+        `;
+      }
+    }
+    
+    function doLogout(isIdle) {
+      try { 
+        sessionStorage.removeItem('userInfo');
+        localStorage.removeItem('userInfo'); 
+      } catch (e) {}
+      
+      if (isIdle) {
+        showToast('Sessão expirada por inatividade.', 'warn', 3500);
+        setTimeout(() => redirecionarParaLogin(), 1000);
+      } else {
+        redirecionarParaLogin();
+      }
+    }
+    
+    function redirecionarParaLogin() {
+      google.script.run
+        .withSuccessHandler(function(url) {
+          console.log('Redirecionando para:', url);
+          window.top.location.href = url;
+        })
+        .withFailureHandler(function(err) {
+          console.error('Erro ao obter URL:', err);
+          const baseUrl = window.location.origin + window.location.pathname;
+          window.top.location.href = baseUrl;
+        })
+        .getWebAppUrl();
+    }
+
+    function resetIdleTimer() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => doLogout(true), IDLE_TIMEOUT);
+    }
+
+    function showToast(msg, type = 'info', duration = 3000) {
+      const root = document.getElementById('toast-root');
+      const toast = document.createElement('div');
+      const bgColor = type === 'error' ? 'bg-red-600' : type === 'warn' ? 'bg-yellow-600' : type === 'success' ? 'bg-green-600' : 'bg-blue-600';
+      toast.className = `${bgColor} text-white px-4 py-2 rounded shadow-lg`;
+      toast.textContent = msg;
+      root.appendChild(toast);
+      setTimeout(() => toast.remove(), duration);
+    }
+
+    function hasPermission(acao) {
+      const f = (usuarioAtual?.funcao || '').toLowerCase();
+      if (f === 'master') return true;
+      if (f === 'visitante') return false;
+      
+      const mapa = {
+        'enderecar': ['almoxarife'],
+        'coletar': ['estoquista'],
+        'receber': ['solicitante'],
+        'iniciarDevolucao': ['solicitante'],
+        'coletarDevolucao': ['estoquista'],
+        'novoPedido': ['solicitante']
+      };
+      return (mapa[acao] || []).includes(f);
+    }
+
+    function podeExecutarAcao(status, acao) {
+      const statusNorm = String(status || '').toLowerCase().trim();
+      
+      const fluxo = {
+        'novo': ['enderecar'],
+        'aguardando coleta': ['enderecar', 'coletar'],
+        'em trânsito': ['receber'],
+        'em transito': ['receber'],
+        'finalizado': ['iniciarDevolucao'],
+        'aguardando devolução': ['coletarDevolucao'],
+        'aguardando devolucao': ['coletarDevolucao'],
+        'devolução finalizada': [],
+        'devolucao finalizada': []
+      };
+      
+      return (fluxo[statusNorm] || []).includes(acao);
+    }
+
+    // Função para formatar data no formato DD/MM/YYYY HH:MM
+    function formatarDataSimples(data) {
+      if (!data) return '';
+
+      const d = new Date(data);
+      if (isNaN(d.getTime())) return '';
+
+      const dia = String(d.getDate()).padStart(2, '0');
+      const mes = String(d.getMonth() + 1).padStart(2, '0');
+      const ano = d.getFullYear();
+      const horas = String(d.getHours()).padStart(2, '0');
+      const minutos = String(d.getMinutes()).padStart(2, '0');
+
+      return ` | <strong>Data:</strong> ${dia}/${mes}/${ano} | <strong>Horário:</strong> ${horas}:${minutos}`;
+    }
+
+    function montarHistoricoAcoes(r) {
+      const historico = [];
+
+      if (r[7]) {
+        const local = r[8] || 'Não informado';
+        const dataFormatada = formatarDataSimples(r[9]);
+        historico.push(`📍 <strong>Endereçado por:</strong> ${r[7]} | <strong>Localização:</strong> ${local}${dataFormatada}`);
+      }
+
+      if (r[10]) {
+        const local = r[11] || 'Não informado';
+        const dataFormatada = formatarDataSimples(r[12]);
+        historico.push(`📦 <strong>Coletado por:</strong> ${r[10]} | <strong>Confirmou localização:</strong> ${local}${dataFormatada}`);
+      }
+
+      if (r[13]) {
+        const recebidoPor = r[18] || 'Não informado';
+        const dataFormatada = formatarDataSimples(r[13]);
+        historico.push(`✅ <strong>Recebido por:</strong> ${recebidoPor}${dataFormatada}`);
+      }
+
+      if (r[14]) {
+        const dataFormatada = formatarDataSimples(r[22]);
+        historico.push(`🔄 <strong>Devolução iniciada por:</strong> ${r[14]}${dataFormatada}`);
+      }
+
+      if (r[15]) {
+        const local = r[16] || 'Não informado';
+        const dataFormatada = formatarDataSimples(r[17]);
+        historico.push(`📍 <strong>Devolução coletada por:</strong> ${r[15]} | <strong>Localização:</strong> ${local}${dataFormatada}`);
+      }
+
+      return historico;
+    }
+
+    // ===== 🔧 BUSCA DINÂMICA =====
+    function carregarDadosIniciais() {
+      console.log('=== Configurando busca dinâmica ===');
+      configurarAutocompleteDinamico();
+      carregarSetores();
+    }
+
+    function configurarAutocompleteDinamico() {
+      const input = document.getElementById('item-input');
+      const dropdown = document.getElementById('autocomplete-dropdown');
+      
+      if (!input || !dropdown) {
+        console.error('Elementos de autocomplete não encontrados');
+        return;
+      }
+      
+      input.addEventListener('input', function() {
+        const termo = this.value.trim();
+        
+        if (autocompleteTimeout) clearTimeout(autocompleteTimeout);
+        
+        if (termo.length < 1) {
+          dropdown.classList.add('hidden');
+          dropdown.innerHTML = '';
+          selectedItemId = null;
+          return;
+        }
+        
+        dropdown.innerHTML = '<div class="p-3 text-gray-500 text-sm">🔍 Buscando...</div>';
+        dropdown.classList.remove('hidden');
+        
+        autocompleteTimeout = setTimeout(() => {
+          buscarItensAutocomplete(termo);
+        }, 300);
+      });
+      
+      document.addEventListener('click', function(e) {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.add('hidden');
+        }
+      });
+      
+      input.addEventListener('focus', function() {
+        const termo = this.value.trim();
+        if (termo.length >= 1) {
+          buscarItensAutocomplete(termo);
+        }
+      });
+    }
+
+    function buscarItensAutocomplete(termo) {
+      const dropdown = document.getElementById('autocomplete-dropdown');
+      
+      console.log('🔍 Buscando itens com termo:', termo);
+      
+      google.script.run
+        .withSuccessHandler(function(resultados) {
+          console.log('✅ Resultados recebidos:', resultados.length);
+          
+          if (!Array.isArray(resultados) || resultados.length === 0) {
+            dropdown.innerHTML = '<div class="p-3 text-gray-500 text-sm">Nenhum item encontrado</div>';
+            dropdown.classList.remove('hidden');
+            return;
+          }
+          
+          let html = '';
+          resultados.forEach(item => {
+            html += `
+              <div class="autocomplete-item p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100" 
+                   data-id="${item.id}" 
+                   onclick="selecionarItem('${item.id}', '${item.label.replace(/'/g, "\\'")}')">
+                <div class="font-medium text-sm text-gray-800">${item.label}</div>
+                ${item.setor ? '<div class="text-xs text-gray-500">Setor: ' + item.setor + '</div>' : ''}
+              </div>
+            `;
+          });
+          
+          dropdown.innerHTML = html;
+          dropdown.classList.remove('hidden');
+          
+          const hint = document.getElementById('item-hint');
+          if (hint) {
+            hint.textContent = `${resultados.length} ${resultados.length === 30 ? '(primeiros)' : ''} itens encontrados`;
+          }
+        })
+        .withFailureHandler(function(erro) {
+          console.error('❌ Erro ao buscar itens:', erro);
+          dropdown.innerHTML = '<div class="p-3 text-red-500 text-sm">Erro ao buscar itens</div>';
+          showToast('Erro ao buscar itens: ' + erro.message, 'error');
+        })
+        .buscarItens(termo, 30);
+    }
+
+    function selecionarItem(id, label) {
+      const input = document.getElementById('item-input');
+      const dropdown = document.getElementById('autocomplete-dropdown');
+      
+      input.value = id;
+      selectedItemId = id;
+      
+      dropdown.classList.add('hidden');
+      
+      console.log('✅ Item selecionado:', id);
+      
+      validItemIds.add(id);
+    }
+
+    function carregarSetores() {
+      console.log('=== Carregando setores ===');
+      google.script.run
+        .withSuccessHandler(function(setores) {
+          console.log('✅ Setores recebidos:', setores?.length || 0);
+          
+          validSetoresLower.clear();
+          const dlSetor = document.getElementById('setor-list');
+          if (!dlSetor) return;
+          
+          dlSetor.innerHTML = '';
+
+          (Array.isArray(setores) ? setores : []).forEach(s => {
+            const str = String(s).trim();
+            if (!str) return;
+            validSetoresLower.set(str.toLowerCase(), str);
+            const opt = document.createElement('option');
+            opt.value = str;
+            dlSetor.appendChild(opt);
+          });
+
+          console.log(`📊 Total de setores: ${validSetoresLower.size}`);
+        })
+        .withFailureHandler(function(err) {
+          console.error('❌ Erro ao carregar setores:', err);
+        })
+        .getSetoresCadastro();
+    }
+
+    function startAutoRefresh() {
+      stopAutoRefresh();
+      autoRefreshTimer = setInterval(() => {
+        if (!isLoadingPedidos) {
+          console.log('🔄 Auto-refresh (30s)');
+          carregarPedidos(null, true);
+        }
+      }, REFRESH_EVERY_MS);
+    }
+    
+    function stopAutoRefresh() {
+      if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    }
+
+    function setBotoesCarregando(carregando) {
+      document.querySelectorAll('.btn-filtro').forEach(function(btn) {
+        if (carregando) {
+          btn.classList.add('btn-carregando');
+        } else {
+          btn.classList.remove('btn-carregando');
+        }
+      });
+    }
+
+    function carregarPedidos(novoFiltro, silencioso = false) {
+      // Atualiza o filtro PRIMEIRO — antes de qualquer verificação
+      if (novoFiltro !== null && novoFiltro !== undefined) {
+        filtroStatus = novoFiltro;
+      }
+
+      // Se já está carregando, apenas re-renderiza com o novo filtro e aguarda
+      if (isLoadingPedidos && !silencioso) {
+        console.log('⏳ Já está carregando pedidos — filtro atualizado, aguardando retorno');
+        renderizarPedidos(window.pedidosGlobais);
+        return;
+      }
+
+      isLoadingPedidos = true;
+      if (!silencioso) setBotoesCarregando(true);
+
+      const netState = document.createElement('div');
+      netState.id = 'net-state';
+      netState.className = 'fixed top-16 right-4 bg-blue-500 text-white px-3 py-1 rounded shadow text-sm';
+      netState.textContent = 'Carregando pedidos...';
+      if (!silencioso) document.body.appendChild(netState);
+
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          if (document.getElementById('net-state')) {
+            document.getElementById('net-state').remove();
+          }
+          isLoadingPedidos = false;
+          setBotoesCarregando(false);
+
+          console.log('✅ Pedidos recebidos:', rows?.length || 0);
+          console.log('Tipo de dados recebidos:', typeof rows);
+          console.log('É array?:', Array.isArray(rows));
+
+          if (!rows || !Array.isArray(rows)) {
+            console.error('❌ Dados inválidos recebidos. Tipo:', typeof rows, '| Valor:', rows);
+            renderizarPedidos([]);
+            if (!silencioso) {
+              showToast('Erro: Dados inválidos recebidos do servidor', 'warn');
+            }
+            return;
+          }
+
+          window.pedidosGlobais = rows;
+          renderizarPedidos(rows);
+        })
+        .withFailureHandler(function(err) {
+          if (document.getElementById('net-state')) {
+            document.getElementById('net-state').remove();
+          }
+          isLoadingPedidos = false;
+          setBotoesCarregando(false);
+          console.error('❌ Erro ao carregar pedidos:', err);
+          console.error('Mensagem de erro:', err.message);
+          console.error('Stack:', err.stack);
+          showToast('Erro ao carregar pedidos: ' + err.message, 'error');
+        })
+        .getPedidosComEstoque();
+    }
+
+    function renderizarPedidos(rows) {
+      const el = document.getElementById('lista-pedidos');
+      if (!el) return;
+
+      console.log('🎨 Renderizando', rows?.length || 0, 'pedidos');
+
+      if (!rows || !Array.isArray(rows) || rows.length === 0) {
+        el.innerHTML = '<div class="p-6 text-center text-gray-500">Nenhum registro encontrado.</div>';
+        return;
+      }
+
+      function _normLoose(s) {
+        return String(s || '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .trim().toLowerCase();
+      }
+
+      const filtroTexto = _normLoose(document.getElementById('filtro-texto')?.value || '');
+
+      const filtrados = rows.filter(r => {
+        const statusRaw = String(r[1] || '');
+        const status = _normLoose(statusRaw);
+        const nomeItem = String(r[2] || '');
+        const setor = String(r[4] || '');
+        const estoqueAtual = r[19];
+
+        let passaStatus = true;
+        if (filtroStatus === 'novo') {
+          passaStatus = (status === 'novo');
+        } else if (filtroStatus === 'abertos') {
+          passaStatus = !(status === 'finalizado' || status === 'devolucao finalizada' || status === 'devolucao_finalizada');
+        } else if (filtroStatus === 'finalizados') {
+          passaStatus = (status === 'finalizado' || status === 'devolucao finalizada' || status === 'devolucao_finalizada');
+        }
+
+        if (!passaStatus) return false;
+
+        const texto = `${statusRaw} ${nomeItem} ${setor} ${estoqueAtual}`.toLowerCase();
+        return filtroTexto ? texto.includes(filtroTexto) : true;
+      });
+
+      console.log('📊 Pedidos após filtro:', filtrados.length);
+
+      if (!filtrados.length) {
+        el.innerHTML = '<div class="p-6 text-center text-gray-500">Nenhum registro encontrado.</div>';
+        return;
+      }
+
+      // Função para definir prioridade de ordenação por status
+      function getPrioridadeStatus(status) {
+        const statusNorm = _normLoose(status);
+
+        if (statusNorm === 'novo') return 1;
+        if (statusNorm === 'aguardando coleta') return 2;
+        if (statusNorm === 'em transito' || statusNorm === 'em trânsito') return 3;
+        if (statusNorm === 'finalizado') return 4;
+        if (statusNorm === 'aguardando devolucao' || statusNorm === 'aguardando devolução') return 5;
+        if (statusNorm === 'devolucao finalizada' || statusNorm === 'devolução finalizada') return 6;
+
+        return 999; // Status desconhecido vai para o final
+      }
+
+      // Ordenar cards por prioridade de status
+      filtrados.sort((a, b) => {
+        const prioA = getPrioridadeStatus(a[1]);
+        const prioB = getPrioridadeStatus(b[1]);
+
+        if (prioA !== prioB) {
+          return prioA - prioB;
+        }
+
+        // Se tiverem o mesmo status, ordenar por data (mais recente primeiro)
+        const dateA = a[5] ? new Date(a[5]).getTime() : 0;
+        const dateB = b[5] ? new Date(b[5]).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      el.innerHTML = '';
+
+      filtrados.forEach(r => {
+        const idPedido = String(r[0] || '');
+        const status   = String(r[1] || '');
+        const nomeItem = String(r[2] || '');
+        const qtd      = r[3] || 0;
+        const setor    = String(r[4] || '');
+        const dataReq  = r[5] ? new Date(r[5]) : null;
+        const solicit  = String(r[6] || '');
+        const estoque  = r[19] || 0;
+        const corId    = String(r[20] || '');
+        const kg       = r[21] || 0;
+        const dataInicioDev = r[22] ? new Date(r[22]) : null;
+
+        const statusNorm = status.toLowerCase().trim();
+        const isFinalizado = statusNorm === 'devolução finalizada' || statusNorm === 'devolucao finalizada';
+
+        // Verificar se está há mais de 2 dias sem primeira localização
+        let alertaSemLocalizacao = false;
+        let diasSemLocalizacao = 0;
+
+        if (statusNorm === 'novo' && dataReq) {
+          const hoje = new Date();
+          const diffMs = hoje - dataReq;
+          const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+          if (diffDias >= 2) {
+            alertaSemLocalizacao = true;
+            diasSemLocalizacao = diffDias;
+          }
+        }
+
+        // Verificar se está há mais de 2 dias em Aguardando Devolução
+        let alertaDevolucaoAtrasada = false;
+        let diasDevolucaoAtrasada = 0;
+
+        const isAguardandoDevolucao =
+          statusNorm === 'aguardando devolucao' ||
+          statusNorm === 'aguardando devolução';
+
+        if (isAguardandoDevolucao && dataInicioDev) {
+          const hoje = new Date();
+          const diffMs = hoje - dataInicioDev;
+          const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+          if (diffDias >= 2) {
+            alertaDevolucaoAtrasada = true;
+            diasDevolucaoAtrasada = diffDias;
+          }
+        }
+
+        const historico = montarHistoricoAcoes(r);
+        const historicoHTML = historico.length > 0
+          ? `<div class="mt-3 p-3 bg-blue-50 rounded border border-blue-200">
+               <div class="text-xs font-bold text-blue-900 mb-2">📋 HISTÓRICO DE AÇÕES:</div>
+               ${historico.map(h => `<div class="text-xs text-blue-800 mb-1">${h}</div>`).join('')}
+             </div>`
+          : '';
+
+        const finalizadoHTML = isFinalizado
+          ? `<div class="mt-3 p-3 bg-green-100 border-2 border-green-500 rounded text-center">
+               <span class="text-lg font-bold text-green-800">✅ ITEM FINALIZADO</span>
+             </div>`
+          : '';
+
+        const alertaHTML = alertaSemLocalizacao
+          ? `<div class="mt-3 p-3 bg-red-100 border-2 border-red-600 rounded">
+               <div class="flex items-center gap-2">
+                 <span class="text-2xl">⚠️</span>
+                 <div>
+                   <div class="text-sm font-bold text-red-800">ATENÇÃO: SEM LOCALIZAÇÃO HÁ ${diasSemLocalizacao} DIAS!</div>
+                   <div class="text-xs text-red-700">Este item precisa ser endereçado urgentemente.</div>
+                 </div>
+               </div>
+             </div>`
+          : '';
+
+        const alertaDevolucaoHTML = alertaDevolucaoAtrasada
+          ? `<div class="mt-3 p-3 bg-purple-100 border-2 border-purple-600 rounded">
+               <div class="flex items-center gap-2">
+                 <span class="text-2xl">🔄</span>
+                 <div>
+                   <div class="text-sm font-bold text-purple-800">ATENÇÃO: AGUARDANDO DEVOLUÇÃO HÁ ${diasDevolucaoAtrasada} DIAS!</div>
+                   <div class="text-xs text-purple-700">Esta devolução precisa ser coletada urgentemente.</div>
+                 </div>
+               </div>
+             </div>`
+          : '';
+
+        const card = document.createElement('div');
+        let cardClasses = 'p-4 rounded-lg border shadow-sm';
+
+        if (alertaSemLocalizacao) {
+          cardClasses = 'p-4 rounded-lg border-2 border-red-700 shadow-lg bg-red-50';
+        } else if (alertaDevolucaoAtrasada) {
+          cardClasses = 'p-4 rounded-lg border-2 border-purple-700 shadow-lg bg-purple-50';
+        }
+
+        card.className = cardClasses;
+
+        let botoesHTML = '';
+        
+        if (!isFinalizado) {
+          const funcao = (usuarioAtual?.funcao || '').toLowerCase();
+          const isVisitante = funcao === 'visitante';
+          
+          if (hasPermission('enderecar')) {
+            const enabled = podeExecutarAcao(status, 'enderecar');
+            const disabledClass = (!enabled || isVisitante) ? 'btn-disabled' : '';
+            botoesHTML += `<button class="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded ${disabledClass}" onclick="acaoPedido('${idPedido}','enderecar')">Endereçar</button>`;
+          }
+          
+          if (hasPermission('coletar')) {
+            const enabled = podeExecutarAcao(status, 'coletar');
+            const disabledClass = (!enabled || isVisitante) ? 'btn-disabled' : '';
+            botoesHTML += `<button class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded ${disabledClass}" onclick="acaoPedido('${idPedido}','coletar')">Coletar no Estoque</button>`;
+          }
+          
+          if (hasPermission('receber')) {
+            const enabled = podeExecutarAcao(status, 'receber');
+            const disabledClass = (!enabled || isVisitante) ? 'btn-disabled' : '';
+            botoesHTML += `<button class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded ${disabledClass}" onclick="acaoPedido('${idPedido}','receber')">Receber</button>`;
+          }
+          
+          if (hasPermission('iniciarDevolucao')) {
+            const enabled = podeExecutarAcao(status, 'iniciarDevolucao');
+            const disabledClass = (!enabled || isVisitante) ? 'btn-disabled' : '';
+            botoesHTML += `<button class="px-3 py-1 bg-gray-700 hover:bg-gray-800 text-white rounded ${disabledClass}" onclick="acaoPedido('${idPedido}','iniciarDevolucao')">Iniciar Devolução</button>`;
+          }
+          
+          if (hasPermission('coletarDevolucao')) {
+            const enabled = podeExecutarAcao(status, 'coletarDevolucao');
+            const disabledClass = (!enabled || isVisitante) ? 'btn-disabled' : '';
+            botoesHTML += `<button class="px-3 py-1 bg-slate-600 hover:bg-slate-700 text-white rounded ${disabledClass}" onclick="acaoPedido('${idPedido}','coletarDevolucao')">Coletar Devolução</button>`;
+          }
+        }
+
+        card.innerHTML = `
+          <div class="flex justify-between items-start gap-4">
+            <div class="flex-1">
+              <div class="text-xs text-gray-500">Cor: ${corId}</div>
+              <div class="text-lg font-semibold">${nomeItem}</div>
+              <div class="text-sm text-gray-600">Cones: <b>${qtd}</b>${kg > 0 ? ` | KG: <b>${kg}</b>` : ''} | Setor: <b>${setor}</b> | Estoque: <b>${estoque}</b></div>
+              <div class="text-sm text-gray-600">Status: <span class="font-medium">${status}</span></div>
+              <div class="text-xs text-gray-500 mt-1">Solicitante: ${solicit} ${dataReq ? ' | ' + dataReq.toLocaleString() : ''}</div>
+              ${alertaHTML}
+              ${alertaDevolucaoHTML}
+              ${historicoHTML}
+              ${finalizadoHTML}
+            </div>
+            ${botoesHTML ? `<div class="flex flex-col gap-2 items-end">${botoesHTML}</div>` : ''}
+          </div>
+        `;
+        
+        el.appendChild(card);
+      });
+    }
+
+    function acaoPedido(id, acao) {
+      const funcao = (usuarioAtual?.funcao || '').toLowerCase();
+      
+      if (funcao === 'visitante') {
+        showToast('Você não tem permissão para executar esta ação', 'warn');
+        return;
+      }
+      
+      let local = '';
+      
+      if (acao === 'enderecar') {
+        local = prompt('Informe a localização do item:', '');
+        if (local === null) return;
+      } else if (acao === 'coletar') {
+        local = prompt('Confirme a localização do item:', '');
+        if (local === null) return;
+      } else if (acao === 'coletarDevolucao') {
+        local = prompt('Informe a localização da devolução:', '');
+        if (local === null) return;
+      }
+      
+      const valores = { 
+        usuario: usuarioAtual?.nomeCompleto || usuarioAtual?.usuario || '', 
+        local: local || '' 
+      };
+
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          showToast(msg, 'success');
+          carregarPedidos(null, false);
+        })
+        .withFailureHandler(function(err) {
+          showToast('Erro: ' + err.message, 'error');
+        })
+        .atualizarPedido(id, acao, valores);
+    }
+
+    function abrirModalPedido() {
+      const modal = document.getElementById('modal-novo-pedido');
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      modal.classList.add('opacity-100', 'pointer-events-auto');
+      document.getElementById('item-input').value = '';
+      document.getElementById('quantidade').value = '1';
+      document.getElementById('kg').value = '';
+      document.getElementById('setor-input').value = '';
+      selectedItemId = null;
+      document.getElementById('autocomplete-dropdown').classList.add('hidden');
+      document.getElementById('autocomplete-dropdown').innerHTML = '';
+    }
+
+    function fecharModalPedido() {
+      const modal = document.getElementById('modal-novo-pedido');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      modal.classList.remove('opacity-100', 'pointer-events-auto');
+    }
+
+    function handleNovoPedido(event) {
+      event.preventDefault();
+      
+      const itemInput = document.getElementById('item-input').value.trim();
+      const quantidade = parseInt(document.getElementById('quantidade').value, 10);
+      const kg = parseFloat(document.getElementById('kg').value) || 0;
+      const setorInput = document.getElementById('setor-input').value.trim();
+
+      console.log('📝 Tentando criar pedido:', { itemInput, quantidade, kg, setorInput });
+
+      if (!itemInput || !quantidade || !setorInput) {
+        showToast('⚠️ Preencha todos os campos', 'warn');
+        return;
+      }
+
+      if (!validItemIds.has(itemInput)) {
+        showToast('⚠️ Selecione um item da lista de busca', 'warn');
+        return;
+      }
+
+      const dados = {
+        item: itemInput,
+        quantidade: quantidade,
+        kg: kg,
+        setor: setorInput,
+        solicitante: usuarioAtual?.nomeCompleto || usuarioAtual?.usuario || 'Desconhecido'
+      };
+
+      console.log('✅ Criando pedido:', dados);
+
+      const btnCriar = document.getElementById('btn-criar');
+      btnCriar.disabled = true;
+      btnCriar.textContent = 'Criando...';
+
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          console.log('✅ Pedido criado:', msg);
+          showToast(msg, 'success');
+          fecharModalPedido();
+          btnCriar.disabled = false;
+          btnCriar.textContent = 'Criar Pedido';
+          carregarPedidos(null, false);
+        })
+        .withFailureHandler(function(err) {
+          console.error('❌ Erro ao criar pedido:', err);
+          showToast('Erro ao criar pedido: ' + err.message, 'error');
+          btnCriar.disabled = false;
+          btnCriar.textContent = 'Criar Pedido';
+        })
+        .criarNovoPedido(dados);
+    }
+
+    // ===== 🔍 LOCALIZAR FIO =====
+    let selectedFioItemId = null;
+    let fioAutocompleteTimeout = null;
+
+    function abrirModalLocalizarFio() {
+      const modal = document.getElementById('modal-localizar-fio');
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      modal.classList.add('opacity-100', 'pointer-events-auto');
+      document.getElementById('fio-input').value = '';
+      document.getElementById('resultados-fio').classList.add('hidden');
+      document.getElementById('lista-resultados-fio').innerHTML = '';
+      selectedFioItemId = null;
+
+      // Configurar autocomplete para o campo de fio
+      configurarAutocompleteFio();
+    }
+
+    function fecharModalLocalizarFio() {
+      const modal = document.getElementById('modal-localizar-fio');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      modal.classList.remove('opacity-100', 'pointer-events-auto');
+    }
+
+    function configurarAutocompleteFio() {
+      const input = document.getElementById('fio-input');
+      const dropdown = document.getElementById('fio-autocomplete-dropdown');
+
+      if (!input || !dropdown) {
+        console.error('Elementos de autocomplete de fio não encontrados');
+        return;
+      }
+
+      // Remover listeners antigos (se houver)
+      const newInput = input.cloneNode(true);
+      input.parentNode.replaceChild(newInput, input);
+
+      const finalInput = document.getElementById('fio-input');
+      const finalDropdown = document.getElementById('fio-autocomplete-dropdown');
+
+      finalInput.addEventListener('input', function() {
+        const termo = this.value.trim();
+
+        if (fioAutocompleteTimeout) clearTimeout(fioAutocompleteTimeout);
+
+        if (termo.length < 1) {
+          finalDropdown.classList.add('hidden');
+          finalDropdown.innerHTML = '';
+          selectedFioItemId = null;
+          return;
+        }
+
+        finalDropdown.innerHTML = '<div class="p-3 text-gray-500 text-sm">🔍 Buscando...</div>';
+        finalDropdown.classList.remove('hidden');
+
+        fioAutocompleteTimeout = setTimeout(() => {
+          buscarItensFioAutocomplete(termo);
+        }, 300);
+      });
+
+      document.addEventListener('click', function(e) {
+        if (!finalInput.contains(e.target) && !finalDropdown.contains(e.target)) {
+          finalDropdown.classList.add('hidden');
+        }
+      });
+
+      finalInput.addEventListener('focus', function() {
+        const termo = this.value.trim();
+        if (termo.length >= 1) {
+          buscarItensFioAutocomplete(termo);
+        }
+      });
+    }
+
+    function buscarItensFioAutocomplete(termo) {
+      const dropdown = document.getElementById('fio-autocomplete-dropdown');
+
+      console.log('🔍 Buscando itens do histórico com termo:', termo);
+
+      google.script.run
+        .withSuccessHandler(function(resultados) {
+          console.log('✅ Resultados recebidos do histórico:', resultados.length);
+
+          if (!Array.isArray(resultados) || resultados.length === 0) {
+            dropdown.innerHTML = '<div class="p-3 text-gray-500 text-sm">Nenhum item encontrado no histórico</div>';
+            dropdown.classList.remove('hidden');
+            return;
+          }
+
+          let html = '';
+          resultados.forEach(item => {
+            html += `
+              <div class="autocomplete-item p-2 hover:bg-purple-50 cursor-pointer border-b border-gray-100"
+                   data-id="${item.id}"
+                   onclick="selecionarItemFio('${item.id}', '${item.label.replace(/'/g, "\\'")}')">
+                <div class="font-medium text-sm text-gray-800">${item.label}</div>
+                ${item.setor ? '<div class="text-xs text-gray-500">Setor: ' + item.setor + '</div>' : ''}
+              </div>
+            `;
+          });
+
+          dropdown.innerHTML = html;
+          dropdown.classList.remove('hidden');
+
+          const hint = document.getElementById('fio-hint');
+          if (hint) {
+            hint.textContent = `${resultados.length} ${resultados.length === 30 ? '(primeiros)' : ''} itens encontrados no histórico`;
+          }
+        })
+        .withFailureHandler(function(erro) {
+          console.error('❌ Erro ao buscar itens do histórico:', erro);
+          dropdown.innerHTML = '<div class="p-3 text-red-500 text-sm">Erro ao buscar itens</div>';
+          showToast('Erro ao buscar itens: ' + erro.message, 'error');
+        })
+        .buscarItensHistorico(termo, 30);
+    }
+
+    function selecionarItemFio(id, label) {
+      const input = document.getElementById('fio-input');
+      const dropdown = document.getElementById('fio-autocomplete-dropdown');
+
+      input.value = id;
+      selectedFioItemId = id;
+
+      dropdown.classList.add('hidden');
+
+      console.log('✅ Item de fio selecionado:', id);
+    }
+
+    function handleLocalizarFio(event) {
+      event.preventDefault();
+
+      const itemInput = document.getElementById('fio-input').value.trim();
+
+      console.log('📝 Buscando fio no histórico:', itemInput);
+
+      if (!itemInput) {
+        showToast('⚠️ Digite o código do item', 'warn');
+        return;
+      }
+
+      const btnBuscar = document.getElementById('btn-buscar-fio');
+      btnBuscar.disabled = true;
+      btnBuscar.textContent = 'Buscando...';
+
+      google.script.run
+        .withSuccessHandler(function(resultados) {
+          console.log('✅ Resultados recebidos do histórico:', resultados);
+
+          btnBuscar.disabled = false;
+          btnBuscar.textContent = '🔍 Buscar';
+
+          const divResultados = document.getElementById('resultados-fio');
+          const listaResultados = document.getElementById('lista-resultados-fio');
+
+          if (!resultados || resultados.length === 0) {
+            listaResultados.innerHTML = `
+              <div class="p-4 bg-yellow-100 border border-yellow-400 rounded-lg">
+                <p class="text-yellow-800 font-semibold">⚠️ Nenhum registro encontrado no histórico</p>
+                <p class="text-yellow-700 text-sm mt-1">O item "${itemInput}" não foi encontrado na aba histórico.</p>
+              </div>
+            `;
+            divResultados.classList.remove('hidden');
+            showToast('Nenhum registro encontrado no histórico', 'warn');
+            return;
+          }
+
+          let html = '';
+          resultados.forEach((resultado, index) => {
+            html += `
+              <div class="p-4 bg-purple-50 border-2 border-purple-300 rounded-lg shadow-md">
+                <div class="flex items-start gap-3">
+                  <div class="text-3xl">📍</div>
+                  <div class="flex-1">
+                    <div class="text-lg font-bold text-purple-900 mb-2">Registro #${index + 1}</div>
+                    <div class="space-y-1 text-sm">
+                      <div class="flex gap-2">
+                        <span class="font-semibold text-gray-700">🏷️ Item:</span>
+                        <span class="text-gray-900">${resultado.item}</span>
+                      </div>
+                      <div class="flex gap-2">
+                        <span class="font-semibold text-gray-700">👤 Lançado por:</span>
+                        <span class="text-gray-900">${resultado.usuario}</span>
+                      </div>
+                      <div class="flex gap-2">
+                        <span class="font-semibold text-gray-700">📦 Localização:</span>
+                        <span class="text-gray-900 font-bold text-purple-700">${resultado.localizacao}</span>
+                      </div>
+                      <div class="flex gap-2">
+                        <span class="font-semibold text-gray-700">📅 Data:</span>
+                        <span class="text-gray-900">${resultado.data}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          listaResultados.innerHTML = html;
+          divResultados.classList.remove('hidden');
+          showToast(`✅ ${resultados.length} registro(s) encontrado(s)`, 'success');
+        })
+        .withFailureHandler(function(erro) {
+          console.error('❌ Erro ao buscar fio no histórico:', erro);
+          btnBuscar.disabled = false;
+          btnBuscar.textContent = '🔍 Buscar';
+          showToast('Erro ao buscar no histórico: ' + erro.message, 'error');
+        })
+        .buscarFioHistorico(itemInput);
+    }
+  </script>
+</body>
+</html>
