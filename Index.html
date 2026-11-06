@@ -204,8 +204,7 @@
 
     document.addEventListener('DOMContentLoaded', function () {
       try {
-        const params = new URLSearchParams(window.location.search);
-        const u = params.get('u');
+        const u = <?!= JSON.stringify(userParam || '') ?> || new URLSearchParams(window.location.search).get('u');
         if (u) {
           try {
             const obj = JSON.parse(decodeURIComponent(escape(atob(u))));
