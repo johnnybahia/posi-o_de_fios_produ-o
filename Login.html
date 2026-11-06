@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body, html { height: 100%; }
+    </style>
+    <title>Login</title>
+  </head>
+
+  <body class="bg-gray-100">
+    <div class="container mx-auto flex items-center justify-center h-full p-4">
+      <div class="w-full max-w-sm">
+        <div class="bg-white shadow-lg rounded-xl p-8">
+          <img src="https://i.ibb.co/FGGjdsM/LOGO-MARFIM.jpg" alt="Logo" class="mx-auto h-16 w-auto mb-6">
+          <h3 class="text-2xl font-bold text-center text-gray-800 mb-6">Acessar Sistema</h3>
+
+          <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert"></div>
+
+          <form onsubmit="handleLogin(event)" class="space-y-6">
+            <div>
+              <label for="username" class="text-sm font-bold text-gray-600 block">Usuário</label>
+              <input type="text" id="username" class="w-full p-2 border border-gray-300 rounded mt-1" required>
+            </div>
+            <div>
+              <label for="password" class="text-sm font-bold text-gray-600 block">Senha</label>
+              <input type="password" id="password" class="w-full p-2 border border-gray-300 rounded mt-1" required>
+            </div>
+            <div>
+              <button type="submit" id="login-button" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md text-white text-sm font-bold">Entrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Codifica objeto em base64 seguro pra URL
+      function enc(obj) {
+        try { return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))); }
+        catch (e) { return ""; }
+      }
+      // Monta URL de forma robusta
+      function buildRedirectUrl(base, params) {
+        try {
+          const u = new URL(String(base));
+          Object.keys(params).forEach(k => u.searchParams.set(k, params[k]));
+          return u.toString();
+        } catch (e) {
+          const sep = String(base).includes('?') ? '&' : '?';
+          const qs  = new URLSearchParams(params).toString();
+          return String(base) + sep + qs;
+        }
+      }
+      function showError(msg) {
+        const errorDiv = document.getElementById('error-message');
+        errorDiv.innerText = msg;
+        errorDiv.classList.remove('hidden');
+        setTimeout(() => errorDiv.classList.add('hidden'), 4000);
+      }
+
+      function handleLogin(event) {
+        event.preventDefault();
+        const user   = document.getElementById('username').value;
+        const pass   = document.getElementById('password').value;
+        const button = document.getElementById('login-button');
+        const errorDiv = document.getElementById('error-message');
+
+        button.disabled = true;
+        button.innerText = 'Verificando...';
+        errorDiv.classList.add('hidden');
+
+        google.script.run
+          .withSuccessHandler(function (userInfo) {
+            if (!userInfo) {
+              showError('Usuário ou senha inválidos.');
+              button.disabled = false;
+              button.innerText = 'Entrar';
+              return;
+            }
+
+            try { sessionStorage.setItem('userInfo', JSON.stringify(userInfo)); } catch (e) {}
+
+            google.script.run
+              .withSuccessHandler(function (execUrl) {
+                if (!execUrl || typeof execUrl !== 'string') {
+                  showError('URL do Web App indisponível. Reimplante o Web App.');
+                  button.disabled = false;
+                  button.innerText = 'Entrar';
+                  return;
+                }
+                const redirect = buildRedirectUrl(execUrl, { page: 'app', u: enc(userInfo) });
+
+                // 🔧 IMPORTANTE: redireciona o TOPO (fora de iframes) para evitar X-Frame-Options
+                try {
+                  if (window.top && window.top !== window.self) {
+                    window.top.location.replace(redirect);
+                  } else {
+                    window.location.replace(redirect);
+                  }
+                } catch (e) {
+                  window.location.href = redirect; // fallback
+                }
+              })
+              .withFailureHandler(function (err) {
+                showError('Erro ao obter URL do Web App: ' + (err && err.message ? err.message : err));
+                button.disabled = false;
+                button.innerText = 'Entrar';
+              })
+              .getWebAppUrl();
+          })
+          .withFailureHandler(function (error) {
+            showError('Erro no servidor: ' + (error && error.message ? error.message : error));
+            button.disabled = false;
+            button.innerText = 'Entrar';
+          })
+          .verificarLogin(user, pass);
+      }
+    </script>
+  </body>
+</html>
